@@ -140,8 +140,9 @@
             const handlePassPrnt = () => {
                 if (!orderId) { alert("請輸入單號"); return; }
                 
+                // 改用 size=2 對應 58mm 紙張，並在 HTML 中使用 100% 寬度
                 const getSingleReceiptHtml = (isLast) => `
-                    <div style="width: 57mm; margin: 0 auto; text-align: center; font-family: sans-serif; padding-bottom: 5px;">
+                    <div style="width: 100%; max-width: 57mm; margin: 0 auto; text-align: center; font-family: sans-serif; padding-bottom: 5px;">
                         <div style="font-size: 40px; font-weight: 900; line-height: 1.1; margin-bottom: 5px;">
                             ${currentStyle.logoText}<br/>${currentStyle.logoSuffix}
                         </div>
@@ -165,11 +166,23 @@
                     fullHtmlBody += getSingleReceiptHtml(isLast);
                 }
 
-                const htmlContent = `<html><body style="margin: 0; padding: 0;">${fullHtmlBody}</body></html>`;
+                // 加入 viewport meta 確保在 App 內正確縮放
+                const htmlContent = `
+                    <html>
+                    <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    </head>
+                    <body style="margin: 0; padding: 0;">
+                        ${fullHtmlBody}
+                    </body>
+                    </html>
+                `;
 
                 const currentUrl = window.location.href;
                 const encodedHtml = encodeURIComponent(htmlContent);
-                const passPrntUrl = `starpassprnt://v1/print/nopreview?back=${encodeURIComponent(currentUrl)}&html=${encodedHtml}&drawer=off&width=57&cut=partial`;
+                
+                // 關鍵修改：使用 size=2 (2英吋/58mm) 而非 width=57
+                const passPrntUrl = `starpassprnt://v1/print/nopreview?back=${encodeURIComponent(currentUrl)}&html=${encodedHtml}&drawer=off&size=2&cut=partial`;
 
                 window.location.href = passPrntUrl;
             };
