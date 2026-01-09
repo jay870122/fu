@@ -91,6 +91,12 @@
                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 12"/><path d="M3 3v9h9"/>
             </IconBase>
         );
+        
+        const Wifi = (props) => (
+            <IconBase {...props}>
+                <path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>
+            </IconBase>
+        );
 
         // --- 主程式邏輯 ---
         const ReceiptApp = () => {
@@ -100,8 +106,12 @@
             const [currentItem, setCurrentItem] = useState('');
             const [currentPrice, setCurrentPrice] = useState('');
             const [currentQty, setCurrentQty] = useState(1);
+            
+            // IP 列印相關設定
             const [printerIp, setPrinterIp] = useState('192.168.1.100');
+            const [useIpPrint, setUseIpPrint] = useState(false);
             const [showSettings, setShowSettings] = useState(false);
+            const [isPrinting, setIsPrinting] = useState(false);
 
             const styles = {
                 uber: {
@@ -157,8 +167,62 @@
                 return `${now.getMonth() + 1}/${now.getDate()}`;
             };
 
-            const handleBrowserPrint = () => {
-                window.print();
+            // --- Star WebPRNT 列印邏輯 ---
+            const sendToPrinter = async (isTest = false) => {
+                setIsPrinting(true);
+                
+                // 決定列印內容
+                const printPlatform = isTest ? 'TEST PRINT' : (platform === 'uber' ? 'Uber Eats' : 'foodpanda');
+                const printId = isTest ? '888' : (orderId || '---');
+                const printTime = `${getCurrentDate()} ${getCurrentTime()}`;
+
+                // 建構 XML 指令 (Star WebPRNT 格式)
+                const xmlBody = `
+<StarWebPRNT xmlns="http://www.star-m.jp/onwebprnt/bin/starwebprnt" xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
+    <Request>
+        <Bo/>
+        <Text width="1" height="1" font="font_a" align="center" smooth="true">${printPlatform}\n</Text>
+        <Text width="3" height="3" font="font_b" align="center" smooth="true">#${printId}\n</Text>
+        <Text align="center">${printTime}\n</Text>
+        <Cut paper="partial"/>
+    </Request>
+</StarWebPRNT>`;
+
+                try {
+                    // 發送請求到印表機
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5秒超時
+
+                    // Star mC-Print3 通常預設為 http://[IP]/StarWebPRNT/SendMessage
+                    const response = await fetch(`http://${printerIp}/StarWebPRNT/SendMessage`, {
+                        method: 'POST',
+                        body: xmlBody,
+                        headers: { 'Content-Type': 'text/xml' },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        if (isTest) alert('測試指令已發送！\n若印表機無反應，請檢查紙張或連線。');
+                    } else {
+                        throw new Error('印表機回應錯誤 (Status: ' + response.status + ')');
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert(`列印失敗：${e.message}\n\n故障排除：\n1. 確認手機連上店內 WiFi\n2. 確認 IP 正確\n3. 這是 HTTP 請求，若網頁為 HTTPS 可能被瀏覽器阻擋 (Mixed Content)`);
+                } finally {
+                    setIsPrinting(false);
+                }
+            };
+
+            // 統一列印處理
+            const handlePrint = () => {
+                if (useIpPrint) {
+                    sendToPrinter(false);
+                } else {
+                    window.print();
+                }
             };
 
             return (
@@ -176,19 +240,51 @@
 
                     {/* 設定面板 */}
                     {showSettings && (
-                        <div className="bg-white p-4 border-b print:hidden animate-in slide-in-from-top-2">
-                            <h3 className="font-bold mb-2 text-gray-700">印表機設定 (Star mC-Print3)</h3>
-                            <div className="flex gap-2">
-                                <input 
-                                    type="text" 
-                                    value={printerIp}
-                                    onChange={(e) => setPrinterIp(e.target.value)}
-                                    placeholder="輸入印表機 IP"
-                                    className="flex-1 p-2 border rounded"
-                                />
-                                <button onClick={() => setShowSettings(false)} className="bg-gray-200 px-4 rounded text-gray-600">
-                                    關閉
+                        <div className="bg-white p-4 border-b print:hidden animate-in slide-in-from-top-2 space-y-3">
+                            <div className="flex justify-between items-center">
+                                <h3 className="font-bold text-gray-700 flex items-center gap-2">
+                                    <Printer size={16} /> 印表機設定 (Star mC-Print3)
+                                </h3>
+                                <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+                                    ✕
                                 </button>
+                            </div>
+                            
+                            {/* IP 輸入與開關 */}
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between bg-gray-50 p-2 rounded border">
+                                    <span className="text-sm font-bold text-gray-600">啟用 IP 直接列印</span>
+                                    <button 
+                                        onClick={() => setUseIpPrint(!useIpPrint)}
+                                        className={`w-12 h-6 rounded-full transition-colors relative ${useIpPrint ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                    >
+                                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${useIpPrint ? 'left-[26px]' : 'left-0.5'}`} />
+                                    </button>
+                                </div>
+
+                                {useIpPrint && (
+                                    <div className="animate-in fade-in slide-in-from-top-1">
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                value={printerIp}
+                                                onChange={(e) => setPrinterIp(e.target.value)}
+                                                placeholder="輸入印表機 IP (如 192.168.1.100)"
+                                                className="flex-1 p-2 border rounded text-sm font-mono"
+                                            />
+                                            <button 
+                                                onClick={() => sendToPrinter(true)}
+                                                disabled={isPrinting}
+                                                className="bg-gray-600 text-white px-3 rounded text-sm whitespace-nowrap active:bg-gray-700 disabled:opacity-50"
+                                            >
+                                                {isPrinting ? '...' : '測試'}
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-orange-500 mt-1">
+                                            ⚠️ 注意：IP 列印需在同網域內。若無反應，請暫時使用「瀏覽器列印」功能。
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -250,14 +346,22 @@
                             清除
                         </button>
                         <button 
-                            onClick={handleBrowserPrint}
-                            className={`flex-1 rounded-xl font-bold text-white text-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform ${currentStyle.primary}`}
+                            onClick={handlePrint}
+                            disabled={isPrinting}
+                            className={`flex-1 rounded-xl font-bold text-white text-2xl shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-70 ${currentStyle.primary}`}
                         >
-                            <Printer size={32} /> 列印單號
+                            {isPrinting ? (
+                                <span>連線中...</span>
+                            ) : (
+                                <>
+                                    {useIpPrint ? <Wifi size={32} /> : <Printer size={32} />}
+                                    <span>{useIpPrint ? 'IP 出單' : '列印單號'}</span>
+                                </>
+                            )}
                         </button>
                     </div>
 
-                    {/* 列印區域 (Print Only) */}
+                    {/* 列印區域 (Print Only - 用於瀏覽器列印) */}
                     <div id="printable-receipt" className="hidden font-sans text-black leading-none max-w-[80mm] mx-auto text-center">
                         <div className="mb-1">
                             <h1 className="text-xl font-bold uppercase tracking-wider">
